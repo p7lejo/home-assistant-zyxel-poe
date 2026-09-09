@@ -117,7 +117,22 @@ class ZyxelPoeSwitch(SwitchEntity):
         self._poe_data = poe_data
         self._host = host
         self._port = port
+        self._attr_unique_id = f"{host}_port_{port}"
 
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {
+                ("zyxel_poe", self._host)
+            },
+            "name": self._host,
+            "manufacturer": "Zyxel",
+        }
+
+    @property
+    def is_on(self):
+        """Return true if switch is on."""
+        return self._poe_data.ports[self._port]['state'] == STATE_ON 
     @property
     def is_on(self):
         """Return true if switch is on."""
