@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 
 LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SWITCH]
+PLATFORMS = [Platform.SWITCH, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
