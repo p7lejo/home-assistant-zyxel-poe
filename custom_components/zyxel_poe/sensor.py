@@ -53,7 +53,7 @@ class ZyxelPoePowerSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
-    _attr_suggested_display_precision = 3
+    _attr_suggested_display_precision = 1
 
     def __init__(self, poe_data: ZyxelPoeData, host: str, port: str) -> None:
         self._poe_data = poe_data
