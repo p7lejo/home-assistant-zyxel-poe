@@ -1,5 +1,7 @@
 """Sensor platform for the ZyXEL PoE integration."""
 
+import aiohttp
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -10,7 +12,6 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
     CONF_USERNAME,
-    Platform,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
@@ -30,7 +31,9 @@ async def async_setup_entry(
     username = config_entry.data[CONF_USERNAME]
     password = config_entry.data[CONF_PASSWORD]
 
-    session = async_create_clientsession(hass)
+    session = async_create_clientsession(
+        hass, cookie_jar=aiohttp.CookieJar(unsafe=True)
+    )
     poe_data = ZyxelPoeData(host, username, password, SCAN_INTERVAL, session)
 
     await poe_data.async_update()
@@ -57,7 +60,6 @@ class ZyxelPoePowerSensor(SensorEntity):
         self._host = host
         self._port = port
         self._attr_unique_id = f"{host}_port_{port}_power"
-        self._attr_translation_key = None
 
     @property
     def device_info(self):
