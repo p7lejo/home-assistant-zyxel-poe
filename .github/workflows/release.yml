@@ -1,0 +1,43 @@
+name: Create release
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "custom_components/zyxel_poe/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read integration version
+        id: version
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('custom_components/zyxel_poe/manifest.json'))['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether tag exists
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release and tag
+        if: steps.tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}"             --target "${{ github.sha }}"             --title "v${{ steps.version.outputs.version }}"             --generate-notes
