@@ -77,11 +77,7 @@ class ZyxelPoeSwitch(SwitchEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {("zyxel_poe", self._host)},
-            "name": self._host,
-            "manufacturer": "Zyxel",
-        }
+        return self._poe_data.device_info
 
     @property
     def is_on(self):
@@ -115,6 +111,13 @@ class ZyxelPoeData:
         self._username = username
         self._password = password
         self._session = session
+        self.device_info = {
+            "identifiers": {("zyxel_poe", host)},
+            "name": host,
+            "manufacturer": "Zyxel",
+            "configuration_url": f"http://{host}",
+        }
+        self._device_info_loaded = False
         self.async_update = Throttle(interval)(self._async_update)
 
     async def _login(self, is_retry=False):
@@ -199,6 +202,68 @@ class ZyxelPoeData:
 
         return True
 
+
+    async def _async_update_device_info(self):
+        """Read model and firmware details from the switch status page."""
+        from bs4 import BeautifulSoup
+
+        # Mark the attempt as completed so a missing status page does not
+        # cause an additional request on every polling cycle.
+        self._device_info_loaded = True
+
+        try:
+            with async_timeout.timeout(10):
+                ret = await self._session.get(self._url, params={"cmd": "1"})
+                if not ret.ok:
+                    _LOGGER.warning(
+                        "Cannot retrieve device information from %s (HTTP %s)",
+                        self._url,
+                        ret.status,
+                    )
+                    return
+
+                soup = BeautifulSoup(await ret.text(), "html.parser")
+                details = {}
+
+                for row in soup.find_all("tr"):
+                    cells = row.find_all("td", recursive=False)
+                    if len(cells) < 2:
+                        continue
+
+                    label = cells[0].get_text(" ", strip=True).rstrip(":")
+                    if label not in {
+                        "System Name",
+                        "Model Name",
+                        "Revision",
+                        "Serial Number",
+                        "Firmware Version",
+                    }:
+                        continue
+
+                    value = " ".join(
+                        cell.get_text(" ", strip=True) for cell in cells[1:]
+                    ).strip()
+                    if label == "Firmware Version":
+                        value = value.split("|", 1)[0].strip()
+                    if value:
+                        details[label] = value
+
+                if details.get("System Name"):
+                    self.device_info["name"] = details["System Name"]
+                if details.get("Model Name"):
+                    self.device_info["model"] = details["Model Name"]
+                if details.get("Revision"):
+                    self.device_info["hw_version"] = details["Revision"]
+                if details.get("Firmware Version"):
+                    self.device_info["sw_version"] = details["Firmware Version"]
+                if details.get("Serial Number"):
+                    self.device_info["serial_number"] = details["Serial Number"]
+
+        except (asyncio.TimeoutError, aiohttp.ClientError) as ex:
+            _LOGGER.warning(
+                "Error retrieving device information from %s: %s", self._url, ex
+            )
+
     async def _async_update(self):
         from bs4 import BeautifulSoup
 
@@ -279,3 +344,6 @@ class ZyxelPoeData:
             raise PlatformNotReady(
                 f"Connection error while connecting to {self._url}: {ex}"
             ) from ex
+
+        if not self._device_info_loaded:
+            await self._async_update_device_info()
