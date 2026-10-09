@@ -63,14 +63,7 @@ class ZyxelPoePowerSensor(SensorEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {
-                ("zyxel_poe", self._host)
-            },
-            "name": self._host,
-            "manufacturer": "Zyxel",
-            "configuration_url": f"http://{self._host}",
-        }
+        return self._poe_data.device_info
 
     @property
     def name(self) -> str:
