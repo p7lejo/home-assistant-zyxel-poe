@@ -6,7 +6,6 @@ on:
       - master
     paths:
       - "custom_components/zyxel_poe/**"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
@@ -42,6 +41,7 @@ jobs:
           from pathlib import Path
 
           manifest_path = Path("custom_components/zyxel_poe/manifest.json")
+          root_manifest_path = Path("manifest.json")
           manifest = json.loads(manifest_path.read_text())
           manifest_version = str(manifest["version"])
 
@@ -76,15 +76,27 @@ jobs:
               release_version = ".".join(base)
               manifest["version"] = release_version
               manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-              subprocess.run(["git", "add", str(manifest_path)], check=True)
+              print(f"Updated component manifest version: {manifest_version} -> {release_version}")
+          else:
+              print(f"Manifest version is newer than existing tags: {release_version}")
+
+          # Keep the repository-root manifest in sync with the integration manifest.
+          root_manifest = json.loads(root_manifest_path.read_text())
+          if str(root_manifest.get("version", "")) != release_version:
+              root_manifest["version"] = release_version
+              root_manifest_path.write_text(json.dumps(root_manifest, indent=2) + "\n")
+              print(f"Updated root manifest version to {release_version}")
+
+          subprocess.run(
+              ["git", "add", str(manifest_path), str(root_manifest_path)],
+              check=True,
+          )
+          if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode != 0:
               subprocess.run(
-                  ["git", "commit", "-m", f"Bump integration version to {release_version}"],
+                  ["git", "commit", "-m", f"Sync integration manifest versions to {release_version}"],
                   check=True,
               )
               subprocess.run(["git", "push", "origin", "HEAD:master"], check=True)
-              print(f"Updated manifest version: {manifest_version} -> {release_version}")
-          else:
-              print(f"Manifest version is newer than existing tags: {release_version}")
 
           with open(__import__("os").environ["GITHUB_OUTPUT"], "a") as output:
               output.write(f"version={release_version}\n")
