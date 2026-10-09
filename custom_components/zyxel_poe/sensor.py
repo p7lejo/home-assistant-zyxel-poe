@@ -34,7 +34,7 @@ async def async_setup_entry(
     session = async_create_clientsession(
         hass, cookie_jar=aiohttp.CookieJar(unsafe=True)
     )
-    poe_data = ZyxelPoeData(host, username, password, SCAN_INTERVAL, session)
+    poe_data = ZyxelPoeData(hass, host, username, password, SCAN_INTERVAL, session)
 
     await poe_data.async_update()
 
