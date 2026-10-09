@@ -12,6 +12,7 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
     CONF_USERNAME,
+    EntityCategory,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
@@ -92,6 +93,7 @@ class ZyxelPoeSystemStartSensor(SensorEntity):
 
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_visible_default = True
 
     def __init__(self, poe_data: ZyxelPoeData, host: str) -> None:
