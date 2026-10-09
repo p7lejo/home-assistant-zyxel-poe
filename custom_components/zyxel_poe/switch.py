@@ -11,6 +11,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.util import Throttle
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.core import HomeAssistant
@@ -52,7 +53,7 @@ async def async_setup_entry(
     session = async_create_clientsession(
         hass, cookie_jar=aiohttp.CookieJar(unsafe=True)
     )
-    poe_data = ZyxelPoeData(host, username, password, SCAN_INTERVAL, session)
+    poe_data = ZyxelPoeData(hass, host, username, password, SCAN_INTERVAL, session)
 
     await poe_data.async_update()
 
@@ -104,7 +105,9 @@ class ZyxelPoeSwitch(SwitchEntity):
 
 
 class ZyxelPoeData:
-    def __init__(self, host, username, password, interval, session):
+    def __init__(self, hass, host, username, password, interval, session):
+        self._hass = hass
+        self._host = host
         self.devices = {}
         self.ports = {}
         self._url = f"http://{host}/cgi-bin/dispatcher.cgi"
@@ -204,12 +207,8 @@ class ZyxelPoeData:
 
 
     async def _async_update_device_info(self):
-        """Read model and firmware details from the switch status page."""
+        """Read switch identity and update the Home Assistant device registry."""
         from bs4 import BeautifulSoup
-
-        # Mark the attempt as completed so a missing status page does not
-        # cause an additional request on every polling cycle.
-        self._device_info_loaded = True
 
         try:
             with async_timeout.timeout(10):
@@ -222,42 +221,85 @@ class ZyxelPoeData:
                     )
                     return
 
-                soup = BeautifulSoup(await ret.text(), "html.parser")
+                page = await ret.text()
+                soup = BeautifulSoup(page, "html.parser")
+                labels = {
+                    "system name": "name",
+                    "model name": "model",
+                    "revision": "hw_version",
+                    "hardware revision": "hw_version",
+                    "serial number": "serial_number",
+                    "firmware version": "sw_version",
+                }
                 details = {}
 
+                # Zyxel firmware versions may use either td or th cells.
                 for row in soup.find_all("tr"):
-                    cells = row.find_all("td", recursive=False)
+                    cells = row.find_all(["td", "th"], recursive=False)
                     if len(cells) < 2:
                         continue
 
-                    label = cells[0].get_text(" ", strip=True).rstrip(":")
-                    if label not in {
-                        "System Name",
-                        "Model Name",
-                        "Revision",
-                        "Serial Number",
-                        "Firmware Version",
-                    }:
-                        continue
+                    for index, cell in enumerate(cells[:-1]):
+                        label = " ".join(
+                            cell.get_text(" ", strip=True).lower().rstrip(":").split()
+                        )
+                        field = labels.get(label)
+                        if not field:
+                            continue
 
-                    value = " ".join(
-                        cell.get_text(" ", strip=True) for cell in cells[1:]
-                    ).strip()
-                    if label == "Firmware Version":
-                        value = value.split("|", 1)[0].strip()
-                    if value:
-                        details[label] = value
+                        value = " ".join(
+                            part.get_text(" ", strip=True)
+                            for part in cells[index + 1:]
+                        ).strip()
+                        if field == "sw_version":
+                            value = value.split("|", 1)[0].strip()
+                        if value:
+                            details[field] = value
+                        break
 
-                if details.get("System Name"):
-                    self.device_info["name"] = details["System Name"]
-                if details.get("Model Name"):
-                    self.device_info["model"] = details["Model Name"]
-                if details.get("Revision"):
-                    self.device_info["hw_version"] = details["Revision"]
-                if details.get("Firmware Version"):
-                    self.device_info["sw_version"] = details["Firmware Version"]
-                if details.get("Serial Number"):
-                    self.device_info["serial_number"] = details["Serial Number"]
+                if not details:
+                    row_text = [
+                        " ".join(row.get_text(" ", strip=True).split())
+                        for row in soup.find_all("tr")
+                    ]
+                    _LOGGER.warning(
+                        "No device information fields parsed from %s; "
+                        "check the switch status-page HTML (cmd=1)",
+                        self._url,
+                    )
+                    _LOGGER.debug("Zyxel status-page table rows: %s", row_text)
+                    return
+
+                self.device_info.update(details)
+
+                # Existing registry entries need an explicit update: changing
+                # the entity's device_info property alone is not sufficient.
+                registry = dr.async_get(self._hass)
+                device = registry.async_get_device(
+                    identifiers={("zyxel_poe", self._host)}, connections=set()
+                )
+                if device is not None:
+                    registry_details = {
+                        key: value for key, value in details.items()
+                        if key != "name"
+                    }
+                    if registry_details:
+                        registry.async_update_device(device.id, **registry_details)
+
+                required_fields = {"model", "hw_version", "sw_version", "serial_number"}
+                self._device_info_loaded = required_fields.issubset(details)
+                missing = sorted(required_fields - set(details))
+                if missing:
+                    _LOGGER.debug(
+                        "Device information from %s is incomplete; missing fields: %s",
+                        self._url,
+                        ", ".join(missing),
+                    )
+                _LOGGER.debug(
+                    "Parsed Zyxel device information from %s: %s",
+                    self._url,
+                    details,
+                )
 
         except (asyncio.TimeoutError, aiohttp.ClientError) as ex:
             _LOGGER.warning(
