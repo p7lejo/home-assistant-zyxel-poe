@@ -212,7 +212,12 @@ class ZyxelPoeData:
 
         try:
             with async_timeout.timeout(10):
+                # The switch may have expired its web session since the last
+                # port poll. Authenticate before requesting the status page.
+                await self._login()
                 ret = await self._session.get(self._url, params={"cmd": "1"})
+                page = await ret.text()
+
                 if not ret.ok:
                     _LOGGER.warning(
                         "Cannot retrieve device information from %s (HTTP %s)",
@@ -221,8 +226,34 @@ class ZyxelPoeData:
                     )
                     return
 
-                page = await ret.text()
                 soup = BeautifulSoup(page, "html.parser")
+
+                # Some firmware responds with a login page (without any table
+                # rows) when the session cookie has expired. Re-authenticate
+                # once and retry before treating the page as unparsable.
+                if not soup.find("tr"):
+                    _LOGGER.debug(
+                        "Zyxel status page from %s contained no table rows "
+                        "(HTTP %s, URL %s, content type %s); retrying after login",
+                        self._url,
+                        ret.status,
+                        ret.url,
+                        ret.headers.get("Content-Type", "unknown"),
+                    )
+                    self._session.cookie_jar.clear()
+                    await self._login(is_retry=True)
+                    ret = await self._session.get(self._url, params={"cmd": "1"})
+                    page = await ret.text()
+                    if not ret.ok:
+                        _LOGGER.warning(
+                            "Cannot retrieve device information from %s after "
+                            "re-authentication (HTTP %s)",
+                            self._url,
+                            ret.status,
+                        )
+                        return
+                    soup = BeautifulSoup(page, "html.parser")
+
                 labels = {
                     "system name": "name",
                     "model name": "model",
