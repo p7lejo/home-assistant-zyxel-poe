@@ -295,7 +295,7 @@ class ZyxelPoeData:
                             }
                             uptime_seconds = 0
                             for amount, unit in re.findall(
-                                r"(\\d+)\\s*(days?|hours?|mins?|minutes?|secs?|seconds?)",
+                                r"(\d+)\s*(days?|hours?|mins?|minutes?|secs?|seconds?)",
                                 value.lower(),
                             ):
                                 normalized_unit = unit.rstrip("s")
