@@ -11,8 +11,8 @@ from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_USERNAME, CONF_PASSWORD
 from homeassistant.util import Throttle
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -276,7 +276,7 @@ class ZyxelPoeData:
                 # the entity's device_info property alone is not sufficient.
                 registry = dr.async_get(self._hass)
                 device = registry.async_get_device(
-                    identifiers={("zyxel_poe", self._host)}
+                    identifiers={("zyxel_poe", self._host)}, connections=set()
                 )
                 if device is not None:
                     registry_details = {
