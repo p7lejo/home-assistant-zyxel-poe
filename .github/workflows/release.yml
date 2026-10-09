@@ -6,10 +6,15 @@ on:
       - master
     paths:
       - "custom_components/zyxel_poe/**"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: create-release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -17,12 +22,73 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Read integration version
-        id: version
+      - name: Configure Git
         run: |
-          VERSION=$(python -c "import json; print(json.load(open('custom_components/zyxel_poe/manifest.json'))['version'])")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Check and update manifest version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python <<'PY'
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+
+          manifest_path = Path("custom_components/zyxel_poe/manifest.json")
+          manifest = json.loads(manifest_path.read_text())
+          manifest_version = str(manifest["version"])
+
+          def version_tuple(value):
+              match = re.fullmatch(r"v?(\d+(?:\.\d+)*)", value)
+              if not match:
+                  return None
+              return tuple(int(part) for part in match.group(1).split("."))
+
+          tags = subprocess.check_output(
+              ["git", "tag", "--list", "v[0-9]*"],
+              text=True,
+          ).splitlines()
+          tagged_versions = [
+              (version_tuple(tag), tag.lstrip("v"))
+              for tag in tags
+              if version_tuple(tag) is not None
+          ]
+          tagged_versions = [item for item in tagged_versions if item[0] is not None]
+          latest_tag_version = max(tagged_versions, default=(None, None), key=lambda item: item[0])
+
+          current_tuple = version_tuple(manifest_version)
+          if current_tuple is None:
+              raise SystemExit(f"Invalid manifest version: {manifest_version}")
+
+          release_version = manifest_version
+          latest_tuple, latest_version = latest_tag_version
+
+          if latest_tuple is not None and current_tuple <= latest_tuple:
+              base = latest_version.split(".")
+              base[-1] = str(int(base[-1]) + 1)
+              release_version = ".".join(base)
+              manifest["version"] = release_version
+              manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+              subprocess.run(["git", "add", str(manifest_path)], check=True)
+              subprocess.run(
+                  ["git", "commit", "-m", f"Bump integration version to {release_version}"],
+                  check=True,
+              )
+              subprocess.run(["git", "push", "origin", "HEAD:master"], check=True)
+              print(f"Updated manifest version: {manifest_version} -> {release_version}")
+          else:
+              print(f"Manifest version is newer than existing tags: {release_version}")
+
+          with open(__import__("os").environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={release_version}\n")
+          PY
 
       - name: Check whether tag exists
         id: tag
@@ -30,6 +96,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/v${{ steps.version.outputs.version }}" >/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -40,4 +108,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.version.outputs.version }}"             --target "${{ github.sha }}"             --title "v${{ steps.version.outputs.version }}"             --generate-notes
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --generate-notes
