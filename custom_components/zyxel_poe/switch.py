@@ -215,7 +215,7 @@ class ZyxelPoeData:
                 # The switch may have expired its web session since the last
                 # port poll. Authenticate before requesting the status page.
                 await self._login()
-                ret = await self._session.get(self._url, params={"cmd": "1"})
+                ret = await self._session.get(self._url, params={"cmd": "12"})
                 page = await ret.text()
 
                 if not ret.ok:
@@ -242,7 +242,7 @@ class ZyxelPoeData:
                     )
                     self._session.cookie_jar.clear()
                     await self._login(is_retry=True)
-                    ret = await self._session.get(self._url, params={"cmd": "1"})
+                    ret = await self._session.get(self._url, params={"cmd": "12"})
                     page = await ret.text()
                     if not ret.ok:
                         _LOGGER.warning(
@@ -295,7 +295,7 @@ class ZyxelPoeData:
                     ]
                     _LOGGER.warning(
                         "No device information fields parsed from %s; "
-                        "check the switch status-page HTML (cmd=1)",
+                        "check the switch status-page HTML (cmd=12)",
                         self._url,
                     )
                     _LOGGER.debug("Zyxel status-page table rows: %s", row_text)
