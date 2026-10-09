@@ -81,6 +81,7 @@ class ZyxelPoeSwitch(SwitchEntity):
             "identifiers": {("zyxel_poe", self._host)},
             "name": self._host,
             "manufacturer": "Zyxel",
+            "configuration_url": f"http://{self._host}",
         }
 
     @property
