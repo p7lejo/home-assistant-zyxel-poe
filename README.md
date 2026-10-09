@@ -11,11 +11,13 @@ Requires Home Assistant 2023.1.0 or newer.
 
 ## Tested Devices
 
-Tested with:
-
+Tested original with: 
 - ZyXEL GS1900-8HP
 - ZyXEL GS1900-10HP
 - ZyXEL GS1900-24EP
+
+forked version tested with:
+- ZyXEL GS1900-8HP
 
 Should be compatible with similar models.
 
