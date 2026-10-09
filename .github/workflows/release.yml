@@ -46,7 +46,7 @@ jobs:
           manifest_version = str(manifest["version"])
 
           def version_tuple(value):
-              match = re.fullmatch(r"v?(\\d+(?:\\.\\d+)*)", value)
+              match = re.fullmatch(r"v?(\d+(?:\\.\d+)*)", value)
               if not match:
                   return None
               return tuple(int(part) for part in match.group(1).split("."))
@@ -75,7 +75,7 @@ jobs:
               base[-1] = str(int(base[-1]) + 1)
               release_version = ".".join(base)
               manifest["version"] = release_version
-              manifest_path.write_text(json.dumps(manifest, indent=2) + "\\n")
+              manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
               print(f"Updated component manifest version: {manifest_version} -> {release_version}")
           else:
               print(f"Manifest version is newer than existing tags: {release_version}")
@@ -84,7 +84,7 @@ jobs:
           root_manifest = json.loads(root_manifest_path.read_text())
           if str(root_manifest.get("version", "")) != release_version:
               root_manifest["version"] = release_version
-              root_manifest_path.write_text(json.dumps(root_manifest, indent=2) + "\\n")
+              root_manifest_path.write_text(json.dumps(root_manifest, indent=2) + "\n")
               print(f"Updated root manifest version to {release_version}")
 
           subprocess.run(
@@ -99,7 +99,7 @@ jobs:
               subprocess.run(["git", "push", "origin", "HEAD:master"], check=True)
 
           with open(__import__("os").environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"version={release_version}\\n")
+              output.write(f"version={release_version}\n")
           PY
 
       - name: Check whether tag exists
@@ -120,7 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \\
-            --target "$(git rev-parse HEAD)" \\
-            --title "v${{ steps.version.outputs.version }}" \\
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --target "$(git rev-parse HEAD)" \
+            --title "v${{ steps.version.outputs.version }}" \
             --generate-notes
