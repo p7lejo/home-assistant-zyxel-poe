@@ -46,7 +46,7 @@ jobs:
           manifest_version = str(manifest["version"])
 
           def version_tuple(value):
-              match = re.fullmatch(r"v?(\d+(?:\\.\d+)*)", value)
+              match = re.fullmatch(r"v?(\d+(?:\.\d+)*)", value)
               if not match:
                   return None
               return tuple(int(part) for part in match.group(1).split("."))
