@@ -108,7 +108,7 @@ class ZyxelPoeSystemStartSensor(SensorEntity):
         """Return the last system start, rounded to a full minute."""
         if self._poe_data.system_start is None:
             return None
-        return self._poe_data.system_start.isoformat()
+        return self._poe_data.system_start
 
     async def async_update(self) -> None:
         await self._poe_data.async_update()
