@@ -219,10 +219,12 @@ class ZyxelPoeData:
             "firmware version": "sw_version",
         }
 
+        required_fields = {"model", "hw_version", "sw_version", "serial_number"}
+
         try:
             # The switch may expire a session while Home Assistant still has
             # its HTTP_XSSID cookie. Retry once with a fresh login if cmd=1
-            # does not return the expected status-page table.
+            # does not return all expected identity fields.
             for attempt in range(2):
                 with async_timeout.timeout(10):
                     await self._login()
@@ -267,7 +269,7 @@ class ZyxelPoeData:
                             details[field] = value
                         break
 
-                if details:
+                if required_fields.issubset(details):
                     break
 
                 row_count = len(soup.find_all("tr"))
@@ -284,17 +286,18 @@ class ZyxelPoeData:
                     self._session.cookie_jar.clear()
                     continue
 
-                row_text = [
-                    " ".join(row.get_text(" ", strip=True).split())
-                    for row in soup.find_all("tr")
-                ]
-                _LOGGER.warning(
-                    "Could not parse device information from %s after retry; "
-                    "the response did not contain the expected status-page fields",
-                    self._url,
-                )
-                _LOGGER.debug("Zyxel cmd=1 response table rows: %s", row_text)
-                return
+                if not details:
+                    row_text = [
+                        " ".join(row.get_text(" ", strip=True).split())
+                        for row in soup.find_all("tr")
+                    ]
+                    _LOGGER.warning(
+                        "Could not parse device information from %s after retry; "
+                        "the response did not contain the expected status-page fields",
+                        self._url,
+                    )
+                    _LOGGER.debug("Zyxel cmd=1 response table rows: %s", row_text)
+                    return
 
             self.device_info.update(details)
 
@@ -312,7 +315,6 @@ class ZyxelPoeData:
                 if registry_details:
                     registry.async_update_device(device.id, **registry_details)
 
-            required_fields = {"model", "hw_version", "sw_version", "serial_number"}
             self._device_info_loaded = required_fields.issubset(details)
             missing = sorted(required_fields - set(details))
             if missing:
