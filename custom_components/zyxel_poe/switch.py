@@ -340,10 +340,10 @@ class ZyxelPoeData:
                         "time_range_status": time_range_status,
                     }
 
-                if not self._device_info_loaded:
-                    await self._async_update_device_info()
-
         except (asyncio.TimeoutError, aiohttp.ClientError) as ex:
             raise PlatformNotReady(
                 f"Connection error while connecting to {self._url}: {ex}"
             ) from ex
+
+        if not self._device_info_loaded:
+            await self._async_update_device_info()
