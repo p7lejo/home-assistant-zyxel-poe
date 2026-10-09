@@ -12,6 +12,7 @@ from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
     CONF_USERNAME,
+    EntityCategory,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
@@ -42,6 +43,7 @@ async def async_setup_entry(
         ZyxelPoePowerSensor(poe_data, host, port)
         for port in poe_data.ports
     ]
+    sensors.append(ZyxelPoeSystemStartSensor(poe_data, host))
 
     async_add_entities(sensors, False)
 
@@ -80,6 +82,35 @@ class ZyxelPoePowerSensor(SensorEntity):
             "port": self._port,
             "max_power_w": port_data.get("max_power_w"),
         }
+
+    async def async_update(self) -> None:
+        await self._poe_data.async_update()
+
+
+
+class ZyxelPoeSystemStartSensor(SensorEntity):
+    """Representation of the last system start time of a ZyXEL switch."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_visible_default = True
+
+    def __init__(self, poe_data: ZyxelPoeData, host: str) -> None:
+        self._poe_data = poe_data
+        self._attr_unique_id = f"{host}_system_start"
+        self._attr_name = "Systemstart"
+
+    @property
+    def device_info(self):
+        return self._poe_data.device_info
+
+    @property
+    def native_value(self):
+        """Return the last system start, rounded to a full minute."""
+        if self._poe_data.system_start is None:
+            return None
+        return self._poe_data.system_start
 
     async def async_update(self) -> None:
         await self._poe_data.async_update()

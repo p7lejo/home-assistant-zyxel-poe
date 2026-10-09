@@ -1,6 +1,8 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import asyncio
+import re
+import time
 import aiohttp
 import async_timeout
 import math
@@ -121,6 +123,8 @@ class ZyxelPoeData:
             "configuration_url": f"http://{host}",
         }
         self._device_info_loaded = False
+        self._last_device_info_update = 0.0
+        self.system_start = None
         self.async_update = Throttle(interval)(self._async_update)
 
     async def _login(self, is_retry=False):
@@ -210,6 +214,7 @@ class ZyxelPoeData:
         """Read switch identity and update the Home Assistant device registry."""
         from bs4 import BeautifulSoup
 
+        self._last_device_info_update = time.monotonic()
         try:
             with async_timeout.timeout(10):
                 # The switch may have expired its web session since the last
@@ -274,14 +279,51 @@ class ZyxelPoeData:
                         label = " ".join(
                             cell.get_text(" ", strip=True).lower().rstrip(":").split()
                         )
-                        field = labels.get(label)
-                        if not field:
-                            continue
-
                         value = " ".join(
                             part.get_text(" ", strip=True)
                             for part in cells[index + 1:]
                         ).strip()
+
+                        if label == "system up time":
+                            units = {
+                                "day": 86400,
+                                "hour": 3600,
+                                "min": 60,
+                                "minute": 60,
+                                "sec": 1,
+                                "second": 1,
+                            }
+                            uptime_seconds = 0
+                            for amount, unit in re.findall(
+                                r"(\d+)\s*(days?|hours?|mins?|minutes?|secs?|seconds?)",
+                                value.lower(),
+                            ):
+                                normalized_unit = unit.rstrip("s")
+                                normalized_unit = {
+                                    "mins": "min",
+                                    "minutes": "minute",
+                                    "secs": "sec",
+                                    "seconds": "second",
+                                }.get(unit, normalized_unit)
+                                uptime_seconds += int(amount) * units.get(
+                                    normalized_unit, 0
+                                )
+                            if uptime_seconds:
+                                started = datetime.now(timezone.utc) - timedelta(
+                                    seconds=uptime_seconds
+                                )
+                                self.system_start = (
+                                    started + timedelta(seconds=30)
+                                ).replace(second=0, microsecond=0)
+                            elif value and re.search(r"\\d", value):
+                                self.system_start = datetime.now(timezone.utc).replace(
+                                    second=0, microsecond=0
+                                )
+                            break
+
+                        field = labels.get(label)
+                        if not field:
+                            continue
                         if field == "sw_version":
                             value = value.split("|", 1)[0].strip()
                         if value:
@@ -418,5 +460,8 @@ class ZyxelPoeData:
                 f"Connection error while connecting to {self._url}: {ex}"
             ) from ex
 
-        if not self._device_info_loaded:
+        if (
+            not self._device_info_loaded
+            or time.monotonic() - self._last_device_info_update >= 300
+        ):
             await self._async_update_device_info()
