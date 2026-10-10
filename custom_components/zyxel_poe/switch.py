@@ -125,6 +125,8 @@ class ZyxelPoeData:
         self._device_info_loaded = False
         self._last_device_info_update = 0.0
         self.system_start = None
+        self._pending_system_start = None
+        self._pending_system_start_count = 0
         self.async_update = Throttle(interval)(self._async_update)
 
     async def _login(self, is_retry=False):
@@ -308,17 +310,40 @@ class ZyxelPoeData:
                                 uptime_seconds += int(amount) * units.get(
                                     normalized_unit, 0
                                 )
-                            if uptime_seconds:
+                            if value and re.search(r"\d", value):
+                                # The switch reports uptime only to whole seconds.
+                                # Round the inferred boot time to the nearest minute;
+                                # confirmation below prevents transient candidates
+                                # caused by HTTP/request latency from changing the sensor.
                                 started = datetime.now(timezone.utc) - timedelta(
                                     seconds=uptime_seconds
                                 )
-                                self.system_start = (
-                                    started + timedelta(seconds=30)
-                                ).replace(second=0, microsecond=0)
-                            elif value and re.search(r"\\d", value):
-                                self.system_start = datetime.now(timezone.utc).replace(
-                                    second=0, microsecond=0
+                                rounded_timestamp = round(started.timestamp() / 60) * 60
+                                candidate = datetime.fromtimestamp(
+                                    rounded_timestamp, timezone.utc
                                 )
+
+                                if self.system_start is None:
+                                    self.system_start = candidate
+                                    self._pending_system_start = None
+                                    self._pending_system_start_count = 0
+                                elif candidate == self.system_start:
+                                    self._pending_system_start = None
+                                    self._pending_system_start_count = 0
+                                elif abs((candidate - self.system_start).total_seconds()) <= 120:
+                                    # Ignore small timestamp fluctuations. Only consider
+                                    # changes greater than two minutes.
+                                    self._pending_system_start = None
+                                    self._pending_system_start_count = 0
+                                elif candidate == self._pending_system_start:
+                                    self._pending_system_start_count += 1
+                                    if self._pending_system_start_count >= 2:
+                                        self.system_start = candidate
+                                        self._pending_system_start = None
+                                        self._pending_system_start_count = 0
+                                else:
+                                    self._pending_system_start = candidate
+                                    self._pending_system_start_count = 1
                             break
 
                         field = labels.get(label)
