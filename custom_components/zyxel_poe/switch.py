@@ -312,12 +312,13 @@ class ZyxelPoeData:
                                 )
                             if value and re.search(r"\d", value):
                                 # The switch reports uptime only to whole seconds.
-                                # Round the inferred boot time to five minutes to
-                                # avoid boundary jitter from HTTP/request latency.
+                                # Round the inferred boot time to the nearest minute;
+                                # confirmation below prevents transient candidates
+                                # caused by HTTP/request latency from changing the sensor.
                                 started = datetime.now(timezone.utc) - timedelta(
                                     seconds=uptime_seconds
                                 )
-                                rounded_timestamp = round(started.timestamp() / 300) * 300
+                                rounded_timestamp = round(started.timestamp() / 60) * 60
                                 candidate = datetime.fromtimestamp(
                                     rounded_timestamp, timezone.utc
                                 )
