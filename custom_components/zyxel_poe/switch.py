@@ -330,6 +330,11 @@ class ZyxelPoeData:
                                 elif candidate == self.system_start:
                                     self._pending_system_start = None
                                     self._pending_system_start_count = 0
+                                elif abs((candidate - self.system_start).total_seconds()) <= 120:
+                                    # Ignore small timestamp fluctuations. Only consider
+                                    # changes greater than two minutes.
+                                    self._pending_system_start = None
+                                    self._pending_system_start_count = 0
                                 elif candidate == self._pending_system_start:
                                     self._pending_system_start_count += 1
                                     if self._pending_system_start_count >= 2:
