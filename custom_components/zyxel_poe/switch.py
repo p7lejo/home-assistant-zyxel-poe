@@ -83,7 +83,6 @@ class ZyxelPoeSwitch(SwitchEntity):
         return self._poe_data.device_info
 
     @property
-    @property
     def available(self):
         return self._poe_data.available and self._port in self._poe_data.ports
 
@@ -494,7 +493,13 @@ class ZyxelPoeData:
                 if not new_ports:
                     raise ValueError("No port data found in switch response")
 
-        except (asyncio.TimeoutError, aiohttp.ClientError, PlatformNotReady, ValueError, IndexError) as ex:
+        except (
+            asyncio.TimeoutError,
+            aiohttp.ClientError,
+            PlatformNotReady,
+            ValueError,
+            IndexError,
+        ) as ex:
             was_available = self.available
             self.available = False
             if not self._initial_update_succeeded:
@@ -502,9 +507,17 @@ class ZyxelPoeData:
                     f"Initial connection to Zyxel switch at {self._url} failed: {ex}"
                 ) from ex
             if was_available:
-                _LOGGER.warning("Communication with Zyxel switch at %s lost: %s", self._url, ex)
+                _LOGGER.warning(
+                    "Communication with Zyxel switch at %s lost: %s",
+                    self._url,
+                    ex,
+                )
             else:
-                _LOGGER.debug("Communication with Zyxel switch at %s still failing: %s", self._url, ex)
+                _LOGGER.debug(
+                    "Communication with Zyxel switch at %s still failing: %s",
+                    self._url,
+                    ex,
+                )
             return
 
         self.ports = new_ports
