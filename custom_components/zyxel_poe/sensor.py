@@ -68,6 +68,10 @@ class ZyxelPoePowerSensor(SensorEntity):
         return self._poe_data.device_info
 
     @property
+    def available(self) -> bool:
+        return self._poe_data.available and self._port in self._poe_data.ports
+
+    @property
     def name(self) -> str:
         return f"Port {self._port} consuming power"
 
@@ -104,6 +108,10 @@ class ZyxelPoeSystemStartSensor(SensorEntity):
     @property
     def device_info(self):
         return self._poe_data.device_info
+
+    @property
+    def available(self) -> bool:
+        return self._poe_data.available
 
     @property
     def native_value(self):

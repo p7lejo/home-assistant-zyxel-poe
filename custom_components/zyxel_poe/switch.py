@@ -83,6 +83,10 @@ class ZyxelPoeSwitch(SwitchEntity):
         return self._poe_data.device_info
 
     @property
+    def available(self):
+        return self._poe_data.available and self._port in self._poe_data.ports
+
+    @property
     def is_on(self):
         return self._poe_data.ports[self._port]["state"] == STATE_ON
 
@@ -112,6 +116,8 @@ class ZyxelPoeData:
         self._host = host
         self.devices = {}
         self.ports = {}
+        self.available = False
+        self._initial_update_succeeded = False
         self._url = f"http://{host}/cgi-bin/dispatcher.cgi"
         self._username = username
         self._password = password
@@ -418,11 +424,15 @@ class ZyxelPoeData:
 
                 if not ret.ok:
                     raise PlatformNotReady(
-                        f"Refresh failed. Got response: {text}"
+                        f"Refresh failed. Got HTTP {ret.status} response"
                     )
 
                 soup = BeautifulSoup(text, "html.parser")
-                table = soup.select("table")[2]
+                tables = soup.select("table")
+                if len(tables) < 3:
+                    raise ValueError("Port status table not found in switch response")
+                table = tables[2]
+                new_ports = {}
 
                 for row in table.find_all("tr"):
                     cols = row.find_all("td")
@@ -467,7 +477,7 @@ class ZyxelPoeData:
                     elif state == "Disable":
                         state = STATE_OFF
 
-                    self.ports[port] = {
+                    new_ports[port] = {
                         "port": port,
                         "state": state,
                         "class": pd_class,
@@ -480,10 +490,42 @@ class ZyxelPoeData:
                         "time_range_status": time_range_status,
                     }
 
-        except (asyncio.TimeoutError, aiohttp.ClientError) as ex:
-            raise PlatformNotReady(
-                f"Connection error while connecting to {self._url}: {ex}"
-            ) from ex
+                if not new_ports:
+                    raise ValueError("No port data found in switch response")
+
+        except (
+            asyncio.TimeoutError,
+            aiohttp.ClientError,
+            PlatformNotReady,
+            ValueError,
+            IndexError,
+        ) as ex:
+            was_available = self.available
+            self.available = False
+            if not self._initial_update_succeeded:
+                raise PlatformNotReady(
+                    f"Initial connection to Zyxel switch at {self._url} failed: {ex}"
+                ) from ex
+            if was_available:
+                _LOGGER.warning(
+                    "Communication with Zyxel switch at %s lost: %s",
+                    self._url,
+                    ex,
+                )
+            else:
+                _LOGGER.debug(
+                    "Communication with Zyxel switch at %s still failing: %s",
+                    self._url,
+                    ex,
+                )
+            return
+
+        self.ports = new_ports
+        was_available = self.available
+        self.available = True
+        self._initial_update_succeeded = True
+        if not was_available:
+            _LOGGER.info("Communication with Zyxel switch at %s restored", self._url)
 
         if (
             not self._device_info_loaded
