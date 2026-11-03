@@ -63,14 +63,11 @@ async def test_user_flow_validates_credentials_and_creates_entry(
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
 
-    # The flow manager automatically sets up a newly created entry.
-    # Keep this test focused on credential validation; integration lifecycle
-    # and platform setup are covered separately in test_init.py.
-    import custom_components.zyxel_poe as integration
-
-    monkeypatch.setattr(
-        integration, "async_setup_entry", AsyncMock(return_value=True)
-    )
+    # ConfigEntries.async_add schedules entry setup as a side effect. Mock
+    # persistence here so this test only covers credential validation and the
+    # entry produced by the flow; lifecycle setup is tested in test_init.py.
+    add_entry = AsyncMock()
+    monkeypatch.setattr(hass.config_entries, "async_add", add_entry)
 
     flow = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -86,4 +83,8 @@ async def test_user_flow_validates_credentials_and_creates_entry(
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_HOST] == "192.0.2.11"
+    add_entry.assert_awaited_once()
+    created_entry = add_entry.await_args.args[0]
+    assert created_entry.data[CONF_HOST] == "192.0.2.11"
+    assert created_entry.unique_id == "192.0.2.11"
     login.assert_awaited_once()
