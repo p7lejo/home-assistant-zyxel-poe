@@ -63,13 +63,9 @@ async def test_user_flow_validates_credentials_and_creates_entry(
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
 
-    # Keep this test focused on flow validation. Creating the entry must not
-    # start the integration setup lifecycle; that is covered by test_init.py.
-    monkeypatch.setattr(
-        hass.config_entries,
-        "async_setup",
-        AsyncMock(return_value=True),
-    )
+    # Avoid creating a Home Assistant-managed aiohttp session in this unit
+    # test. Its lifecycle is not relevant because the login call is mocked.
+    monkeypatch.setattr(config_flow, "async_create_clientsession", lambda *args, **kwargs: object())
 
     flow = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
