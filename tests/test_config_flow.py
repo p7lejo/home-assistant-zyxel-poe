@@ -1,9 +1,8 @@
-"""Regression tests for config-flow behavior.
+"""Regression tests for config-flow behavior."""
 
-"""
+from unittest.mock import AsyncMock
 
 import pytest
-from unittest.mock import AsyncMock
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
@@ -53,6 +52,7 @@ async def test_user_flow_rejects_duplicate_host(hass, enable_custom_integrations
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
 
+
 @pytest.mark.asyncio
 async def test_user_flow_validates_credentials_and_creates_entry(
     hass, enable_custom_integrations, monkeypatch
@@ -63,9 +63,13 @@ async def test_user_flow_validates_credentials_and_creates_entry(
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
 
-    # Prevent platform setup from opening real device connections.
-    from custom_components import zyxel_poe
-    monkeypatch.setattr(zyxel_poe, "async_setup_entry", AsyncMock(return_value=True))
+    # Keep this test focused on the config flow. Platform setup is covered
+    # separately by tests/test_init.py and must not open device connections.
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_forward_entry_setups",
+        AsyncMock(return_value=None),
+    )
 
     flow = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
