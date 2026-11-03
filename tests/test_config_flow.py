@@ -62,6 +62,11 @@ async def test_user_flow_validates_credentials_and_creates_entry(
 
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
+    # The login method is mocked, so a real aiohttp session is unnecessary.
+    # Avoid creating a session whose HA shutdown hook would outlive this test.
+    monkeypatch.setattr(
+        config_flow, "async_create_clientsession", lambda *args, **kwargs: object()
+    )
 
     # ConfigEntries.async_add schedules entry setup as a side effect. Mock
     # persistence here so this test only covers credential validation and the
