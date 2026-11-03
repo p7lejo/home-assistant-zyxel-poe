@@ -223,3 +223,33 @@ async def test_incomplete_device_info_is_still_throttled(poe_data, monkeypatch):
     await poe_data._async_update()
 
     assert poe_data._async_update_device_info.await_count == 1
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect tracked in issue #13: a partial port table replaces the full snapshot.",
+)
+async def test_partial_port_table_does_not_replace_complete_snapshot(poe_data):
+    """A truncated response must not discard ports absent from that response."""
+    cells = [
+        "x", "x", "1", "Enable", "Class 3", "High", "On",
+        "1200", "30000", "Always", "Active", "x",
+    ]
+    row = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    html = f"<table></table><table></table><table>{row}</table>"
+    poe_data._initial_update_succeeded = True
+    poe_data.available = True
+    poe_data.ports = {
+        "1": {"port": "1", "state": STATE_ON},
+        "2": {"port": "2", "state": STATE_OFF},
+    }
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+    poe_data._device_info_loaded = True
+
+    await poe_data._async_update()
+
+    assert "2" in poe_data.ports
