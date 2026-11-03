@@ -63,12 +63,12 @@ async def test_user_flow_validates_credentials_and_creates_entry(
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
 
-    # Keep this test focused on the config flow. Platform setup is covered
-    # separately by tests/test_init.py and must not open device connections.
+    # Keep this test focused on flow validation. Creating the entry must not
+    # start the integration setup lifecycle; that is covered by test_init.py.
     monkeypatch.setattr(
         hass.config_entries,
-        "async_forward_entry_setups",
-        AsyncMock(return_value=None),
+        "async_setup",
+        AsyncMock(return_value=True),
     )
 
     flow = await hass.config_entries.flow.async_init(
