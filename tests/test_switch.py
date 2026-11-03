@@ -201,7 +201,7 @@ async def test_failed_turn_on_does_not_change_reported_state(poe_data):
     strict=True,
     reason="Known defect tracked in issue #15: incomplete info bypasses the 5-minute throttle.",
 )
-async def test_incomplete_device_info_is_still_throttled(poe_data, monkeypatch):
+async def test_incomplete_device_info_is_still_throttled(poe_data):
     """A partial cmd=12 response must not cause a request every minute."""
     cells = [
         "x", "x", "1", "Enable", "Class 3", "High", "On",
@@ -216,8 +216,8 @@ async def test_incomplete_device_info_is_still_throttled(poe_data, monkeypatch):
     poe_data._session.get = AsyncMock(return_value=response)
     poe_data._device_info_loaded = False
     poe_data._async_update_device_info = AsyncMock()
-    clock = iter([600.0, 660.0])
-    monkeypatch.setattr("custom_components.zyxel_poe.switch.time.monotonic", lambda: next(clock))
+    import time
+    poe_data._last_device_info_update = time.monotonic()
 
     await poe_data._async_update()
     await poe_data._async_update()
