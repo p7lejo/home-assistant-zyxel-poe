@@ -1,6 +1,5 @@
 """Regression tests for config-flow behavior.
 
-The duplicate-host test is an expected failure until issue #12 is implemented.
 """
 
 import pytest
@@ -30,6 +29,7 @@ async def test_user_flow_rejects_duplicate_host(hass, enable_custom_integrations
     existing = MockConfigEntry(
         domain=DOMAIN,
         title="Existing switch",
+        unique_id="192.0.2.10",
         data={
             CONF_HOST: "192.0.2.10",
             CONF_USERNAME: "admin",
@@ -62,6 +62,10 @@ async def test_user_flow_validates_credentials_and_creates_entry(
 
     login = AsyncMock()
     monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
+
+    # Prevent platform setup from opening real device connections.
+    from custom_components import zyxel_poe
+    monkeypatch.setattr(zyxel_poe, "async_setup_entry", AsyncMock(return_value=True))
 
     flow = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
