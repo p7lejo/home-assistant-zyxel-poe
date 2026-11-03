@@ -135,3 +135,91 @@ async def test_turn_on_delegates_to_device_command(poe_data):
     await entity.async_turn_on()
 
     poe_data.change_state.assert_awaited_once_with("3", 1)
+
+
+@pytest.mark.asyncio
+async def test_login_reuses_existing_session_cookie(poe_data):
+    """An existing Zyxel session cookie avoids an unnecessary login."""
+    from types import SimpleNamespace
+
+    poe_data._session.cookie_jar.__iter__.return_value = iter(
+        [SimpleNamespace(key="HTTP_XSSID")]
+    )
+    poe_data._session.post = AsyncMock()
+
+    await poe_data._login()
+
+    poe_data._session.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_change_state_posts_port_command(poe_data):
+    """PoE commands include the requested port and state."""
+    from unittest.mock import patch
+
+    from bs4 import BeautifulSoup
+
+    poe_data._login = AsyncMock()
+    get_response = AsyncMock()
+    get_response.ok = True
+    get_response.text.return_value = (
+        '<html><input name="XSSID" value="test-token"></html>'
+    )
+    post_response = AsyncMock()
+    post_response.text.return_value = "window.location.replace('/success')"
+    poe_data._session.get = AsyncMock(return_value=get_response)
+    poe_data._session.post = AsyncMock(return_value=post_response)
+
+    result = await poe_data.change_state("4", 1)
+
+    assert result is True
+    sent = poe_data._session.post.await_args.kwargs["data"]
+    assert sent["portlist"] == "4"
+    assert sent["state"] == 1
+    assert sent["XSSID"] == "test-token"
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect tracked in issue #11: optimistic state mutation on failure.",
+)
+async def test_failed_turn_on_does_not_change_reported_state(poe_data):
+    """A rejected device command must not mutate the state shown in HA."""
+    poe_data.ports = {"3": {"state": STATE_OFF}}
+    poe_data.change_state = AsyncMock(return_value=False)
+    entity = ZyxelPoeSwitch(poe_data, "192.0.2.10", "3")
+
+    result = await entity.async_turn_on()
+
+    assert result is False
+    assert entity.is_on is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect tracked in issue #15: incomplete info bypasses the 5-minute throttle.",
+)
+async def test_incomplete_device_info_is_still_throttled(poe_data, monkeypatch):
+    """A partial cmd=12 response must not cause a request every minute."""
+    cells = [
+        "x", "x", "1", "Enable", "Class 3", "High", "On",
+        "1200", "30000", "Always", "Active", "x",
+    ]
+    row = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    html = f"<table></table><table></table><table>{row}</table>"
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+    poe_data._device_info_loaded = False
+    poe_data._async_update_device_info = AsyncMock()
+    clock = iter([600.0, 660.0])
+    monkeypatch.setattr("custom_components.zyxel_poe.switch.time.monotonic", lambda: next(clock))
+
+    await poe_data._async_update()
+    await poe_data._async_update()
+
+    assert poe_data._async_update_device_info.await_count == 1
