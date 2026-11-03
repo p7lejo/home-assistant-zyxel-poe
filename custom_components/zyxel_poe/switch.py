@@ -3,9 +3,7 @@ import logging
 import asyncio
 import re
 import time
-import aiohttp
-import async_timeout
-import math
+import aiohttpimport math
 from random import random
 
 from homeassistant.const import STATE_ON, STATE_OFF
@@ -165,7 +163,7 @@ class ZyxelPoeData:
         from bs4 import BeautifulSoup
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 await self._login()
                 ret = await self._session.get(self._url, params={"cmd": "773"})
                 text = await ret.text()
@@ -198,7 +196,7 @@ class ZyxelPoeData:
         }
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 await self._login()
                 res = await self._session.post(self._url, data=command_data)
                 text = await res.text()
@@ -224,7 +222,7 @@ class ZyxelPoeData:
 
         self._last_device_info_update = time.monotonic()
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 # The switch may have expired its web session since the last
                 # port poll. Authenticate before requesting the status page.
                 await self._login()
@@ -414,7 +412,7 @@ class ZyxelPoeData:
         from bs4 import BeautifulSoup
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 await self._login()
 
                 ret = await self._session.get(
