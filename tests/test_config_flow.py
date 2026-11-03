@@ -12,7 +12,7 @@ from custom_components.zyxel_poe.const import DOMAIN
 
 
 @pytest.mark.asyncio
-async def test_user_flow_shows_form(hass):
+async def test_user_flow_shows_form(hass, enable_custom_integrations):
     """The initial step asks for host and credentials."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -27,7 +27,7 @@ async def test_user_flow_shows_form(hass):
     strict=True,
     reason="Known defect tracked in issue #12: duplicate host is not rejected.",
 )
-async def test_user_flow_rejects_duplicate_host(hass):
+async def test_user_flow_rejects_duplicate_host(hass, enable_custom_integrations):
     """A switch already configured must not be added a second time."""
     existing = MockConfigEntry(
         domain=DOMAIN,
