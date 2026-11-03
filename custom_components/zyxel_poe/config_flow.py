@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 
-from .switch import ZyxelPoeData
+from .switch import SCAN_INTERVAL, ZyxelPoeData
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 import aiohttp
 
@@ -34,14 +34,21 @@ class ZyxelPoeConfigFlow(config_entries.ConfigFlow, domain="zyxel_poe"):
 
         if user_input is not None:
             try:
-                # Validate the connection
-                session = async_create_clientsession(self.hass, cookie_jar=aiohttp.CookieJar(unsafe=True))
+                await self.async_set_unique_id(user_input[CONF_HOST].strip().lower())
+                self._abort_if_unique_id_configured()
+
+                # Validate the connection using the same constructor contract
+                # as the platform setup.
+                session = async_create_clientsession(
+                    self.hass, cookie_jar=aiohttp.CookieJar(unsafe=True)
+                )
                 poe_data = ZyxelPoeData(
+                    self.hass,
                     user_input[CONF_HOST],
                     user_input[CONF_USERNAME],
                     user_input[CONF_PASSWORD],
-                    None,  # No interval needed for validation
-                    session
+                    SCAN_INTERVAL,
+                    session,
                 )
                 
                 try:
