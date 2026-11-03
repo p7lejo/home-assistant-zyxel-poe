@@ -1,16 +1,15 @@
 """Config flow for ZyXEL PoE integration."""
 import logging
+
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_USERNAME, CONF_PASSWORD
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
-import homeassistant.helpers.config_validation as cv
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.data_entry_flow import AbortFlow, FlowResult
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .switch import SCAN_INTERVAL, ZyxelPoeData
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,8 +36,6 @@ class ZyxelPoeConfigFlow(config_entries.ConfigFlow, domain="zyxel_poe"):
                 await self.async_set_unique_id(user_input[CONF_HOST].strip().lower())
                 self._abort_if_unique_id_configured()
 
-                # Validate the connection using the same constructor contract
-                # as the platform setup.
                 session = async_create_clientsession(
                     self.hass, cookie_jar=aiohttp.CookieJar(unsafe=True)
                 )
@@ -50,20 +47,19 @@ class ZyxelPoeConfigFlow(config_entries.ConfigFlow, domain="zyxel_poe"):
                     SCAN_INTERVAL,
                     session,
                 )
-                
-                try:
-                    await poe_data._login()
-                    # Create entry
-                    return self.async_create_entry(
-                        title=f"ZyXEL PoE {user_input[CONF_HOST]}",
-                        data=user_input
-                    )
-                except Exception as ex:
-                    _LOGGER.error(f"Login failed: {ex}")
-                    errors["base"] = "invalid_auth"
+                await poe_data._login()
+            except AbortFlow:
+                # Duplicate entries are a normal flow outcome, not a
+                # connection error that should be converted back into a form.
+                raise
             except Exception as ex:
-                _LOGGER.error(f"Connection failed: {ex}")
+                _LOGGER.error("Connection failed: %s", ex)
                 errors["base"] = "cannot_connect"
+            else:
+                return self.async_create_entry(
+                    title=f"ZyXEL PoE {user_input[CONF_HOST]}",
+                    data=user_input,
+                )
 
         return self.async_show_form(
             step_id="user", data_schema=CONFIG_SCHEMA, errors=errors
