@@ -1,8 +1,17 @@
 """Shared fixtures for the ZyXEL PoE integration tests."""
 
+from pathlib import Path
+import sys
 from unittest.mock import MagicMock
 
 import pytest
+
+# pytest-homeassistant-custom-component may change the import path while
+# loading Home Assistant fixtures. Ensure the repository root is available
+# so the integration's custom_components namespace can be imported.
+REPOSITORY_ROOT = str(Path(__file__).resolve().parents[1])
+if REPOSITORY_ROOT not in sys.path:
+    sys.path.insert(0, REPOSITORY_ROOT)
 
 from custom_components.zyxel_poe.switch import SCAN_INTERVAL, ZyxelPoeData
 
