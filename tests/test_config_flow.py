@@ -40,10 +40,12 @@ async def test_user_flow_rejects_duplicate_host(hass):
     )
     existing.add_to_hass(hass)
 
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_USER},
-        data={
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"],
+        user_input={
             CONF_HOST: "192.0.2.10",
             CONF_USERNAME: "admin",
             CONF_PASSWORD: "secret",
