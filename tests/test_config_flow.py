@@ -4,6 +4,8 @@ The duplicate-host test is an expected failure until issue #12 is implemented.
 """
 
 import pytest
+from unittest.mock import AsyncMock
+
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -23,10 +25,6 @@ async def test_user_flow_shows_form(hass, enable_custom_integrations):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known defect tracked in issue #12: duplicate host is not rejected.",
-)
 async def test_user_flow_rejects_duplicate_host(hass, enable_custom_integrations):
     """A switch already configured must not be added a second time."""
     existing = MockConfigEntry(
@@ -54,3 +52,29 @@ async def test_user_flow_rejects_duplicate_host(hass, enable_custom_integrations
 
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
+
+@pytest.mark.asyncio
+async def test_user_flow_validates_credentials_and_creates_entry(
+    hass, enable_custom_integrations, monkeypatch
+):
+    """A valid login creates a config entry with the supplied host."""
+    from custom_components.zyxel_poe import config_flow
+
+    login = AsyncMock()
+    monkeypatch.setattr(config_flow.ZyxelPoeData, "_login", login)
+
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"],
+        user_input={
+            CONF_HOST: "192.0.2.11",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "secret",
+        },
+    )
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_HOST] == "192.0.2.11"
+    login.assert_awaited_once()
