@@ -112,7 +112,7 @@ async def test_system_start_ignores_changes_of_two_minutes_or_less(
     poe_data._login = AsyncMock()
     response = AsyncMock()
     response.ok = True
-    response.text.return_value = _status_html()
+    response.text.return_value = _status_html("0 days, 0 hours, 9 mins, 45 secs")
     poe_data._session.get = AsyncMock(return_value=response)
 
     await poe_data._async_update_device_info()
