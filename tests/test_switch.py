@@ -208,9 +208,13 @@ async def test_incomplete_device_info_is_still_throttled(poe_data):
     response.text.return_value = html
     poe_data._session.get = AsyncMock(return_value=response)
     poe_data._device_info_loaded = False
-    poe_data._async_update_device_info = AsyncMock()
     import time
-    poe_data._last_device_info_update = time.monotonic()
+
+    async def record_attempt():
+        poe_data._last_device_info_update = time.monotonic()
+
+    poe_data._async_update_device_info = AsyncMock(side_effect=record_attempt)
+    poe_data._last_device_info_update = time.monotonic() - 301
 
     await poe_data._async_update()
     await poe_data._async_update()
