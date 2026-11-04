@@ -358,3 +358,23 @@ async def test_non_numeric_power_values_are_rejected(poe_data):
 
     assert poe_data.available is False
     assert poe_data.ports is previous
+
+
+@pytest.mark.asyncio
+async def test_malformed_port_rows_are_rejected(poe_data):
+    """Rows with an unexpected layout must invalidate the whole snapshot."""
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = (
+        "<table></table><table></table><table>"
+        + _port_row(1)
+        + "<tr><td>truncated row</td></tr>"
+        + "</table>"
+    )
+    poe_data._session.get = AsyncMock(return_value=response)
+
+    with pytest.raises(PlatformNotReady, match="Unexpected port row layout"):
+        await poe_data._async_update()
+
+    assert poe_data.ports == {}
