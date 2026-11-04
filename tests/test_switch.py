@@ -135,6 +135,7 @@ async def test_turn_on_delegates_to_device_command(poe_data):
     await entity.async_turn_on()
 
     poe_data.change_state.assert_awaited_once_with("3", 1)
+    assert poe_data.ports["3"]["state"] == STATE_ON
 
 
 @pytest.mark.asyncio
@@ -180,10 +181,6 @@ async def test_change_state_posts_port_command(poe_data):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known defect tracked in issue #11: optimistic state mutation on failure.",
-)
 async def test_failed_turn_on_does_not_change_reported_state(poe_data):
     """A rejected device command must not mutate the state shown in HA."""
     poe_data.ports = {"3": {"state": STATE_OFF}}
@@ -197,10 +194,6 @@ async def test_failed_turn_on_does_not_change_reported_state(poe_data):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known defect tracked in issue #15: incomplete info bypasses the 5-minute throttle.",
-)
 async def test_incomplete_device_info_is_still_throttled(poe_data):
     """A partial cmd=12 response must not cause a request every minute."""
     cells = [
@@ -225,10 +218,6 @@ async def test_incomplete_device_info_is_still_throttled(poe_data):
     assert poe_data._async_update_device_info.await_count == 1
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known defect tracked in issue #13: a partial port table replaces the full snapshot.",
-)
 async def test_partial_port_table_does_not_replace_complete_snapshot(poe_data):
     """A truncated response must not discard ports absent from that response."""
     cells = [
@@ -253,3 +242,115 @@ async def test_partial_port_table_does_not_replace_complete_snapshot(poe_data):
     await poe_data._async_update()
 
     assert "2" in poe_data.ports
+
+
+@pytest.mark.asyncio
+async def test_failed_turn_off_does_not_change_reported_state(poe_data):
+    """A rejected device command must leave the last confirmed state intact."""
+    poe_data.ports = {"3": {"state": STATE_ON}}
+    poe_data.change_state = AsyncMock(return_value=False)
+    entity = ZyxelPoeSwitch(poe_data, "192.0.2.10", "3")
+
+    result = await entity.async_turn_off()
+
+    assert result is False
+    assert entity.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_command_exception_does_not_change_reported_state(poe_data):
+    """A transport error must not optimistically change the entity state."""
+    poe_data.ports = {"3": {"state": STATE_OFF}}
+    poe_data.change_state = AsyncMock(side_effect=PlatformNotReady("timeout"))
+    entity = ZyxelPoeSwitch(poe_data, "192.0.2.10", "3")
+
+    with pytest.raises(PlatformNotReady):
+        await entity.async_turn_on()
+
+    assert entity.is_on is False
+
+
+def _port_row(port, power="1200", max_power="30000"):
+    cells = [
+        "x", "x", str(port), "Enable", "Class 3", "High", "On",
+        power, max_power, "Always", "Active", "x",
+    ]
+    return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+
+
+@pytest.mark.asyncio
+async def test_model_port_count_rejects_truncated_first_snapshot(poe_data):
+    """The first snapshot must contain every PoE port for a recognized model."""
+    poe_data.device_info["model"] = "GS1900-8HP"
+    html = "<table></table><table></table><table>" + _port_row(1) + "</table>"
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+
+    with pytest.raises(PlatformNotReady, match="expected 8 ports"):
+        await poe_data._async_update()
+
+    assert poe_data.ports == {}
+    assert poe_data.available is False
+
+
+@pytest.mark.asyncio
+async def test_model_port_count_accepts_gs1900_24ep_poe_ports(poe_data):
+    """The GS1900-24EP exposes twelve PoE ports, not twenty-four."""
+    poe_data.device_info["model"] = "GS1900-24EP"
+    rows = "".join(_port_row(port) for port in range(1, 13))
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = f"<table></table><table></table><table>{rows}</table>"
+    poe_data._session.get = AsyncMock(return_value=response)
+    poe_data._async_update_device_info = AsyncMock()
+
+    await poe_data._async_update()
+
+    assert poe_data.available is True
+    assert len(poe_data.ports) == 12
+
+
+@pytest.mark.asyncio
+async def test_duplicate_port_rows_are_rejected(poe_data):
+    """Duplicate port rows indicate a malformed or concatenated response."""
+    html = (
+        "<table></table><table></table><table>"
+        + _port_row(1) + _port_row(1)
+        + "</table>"
+    )
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+
+    with pytest.raises(PlatformNotReady, match="Duplicate port"):
+        await poe_data._async_update()
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_power_values_are_rejected(poe_data):
+    """Invalid numeric fields must not replace the last confirmed snapshot."""
+    poe_data._initial_update_succeeded = True
+    poe_data.available = True
+    previous = {"1": {"port": "1", "state": STATE_ON}}
+    poe_data.ports = previous
+    html = (
+        "<table></table><table></table><table>"
+        + _port_row(1, power="unknown")
+        + "</table>"
+    )
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+
+    await poe_data._async_update()
+
+    assert poe_data.available is False
+    assert poe_data.ports is previous
