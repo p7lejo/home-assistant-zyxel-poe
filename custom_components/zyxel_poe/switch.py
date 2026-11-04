@@ -90,12 +90,36 @@ class ZyxelPoeSwitch(SwitchEntity):
         return self._poe_data.ports[self._port]["state"] == STATE_ON
 
     async def async_turn_on(self):
-        self._poe_data.ports[self._port]["state"] = STATE_ON
-        return await self._poe_data.change_state(self._port, 1)
+        """Enable PoE and update the reported state only after confirmation."""
+        return await self._async_set_state(1, STATE_ON)
 
     async def async_turn_off(self):
-        self._poe_data.ports[self._port]["state"] = STATE_OFF
-        return await self._poe_data.change_state(self._port, 0)
+        """Disable PoE and update the reported state only after confirmation."""
+        return await self._async_set_state(0, STATE_OFF)
+
+    async def _async_set_state(self, command_state, reported_state):
+        """Send a device command before changing Home Assistant's local state."""
+        try:
+            success = await self._poe_data.change_state(self._port, command_state)
+        except (aiohttp.ClientError, asyncio.TimeoutError, PlatformNotReady):
+            _LOGGER.warning(
+                "Failed to change PoE state for %s port %s",
+                self._host,
+                self._port,
+                exc_info=True,
+            )
+            raise
+
+        if not success:
+            _LOGGER.warning(
+                "Zyxel switch %s rejected PoE state change for port %s",
+                self._host,
+                self._port,
+            )
+            return False
+
+        self._poe_data.ports[self._port]["state"] = reported_state
+        return True
 
     @property
     def name(self):
@@ -412,6 +436,10 @@ class ZyxelPoeData:
     async def _async_update(self):
         from bs4 import BeautifulSoup
 
+        # Load the model before validating the first port table.
+        if time.monotonic() - self._last_device_info_update >= 300:
+            await self._async_update_device_info()
+
         try:
             async with asyncio.timeout(10):
                 await self._login()
@@ -471,6 +499,13 @@ class ZyxelPoeData:
                     else:
                         continue
 
+                    if not port.isdigit() or int(port) < 1:
+                        raise ValueError(f"Invalid port number in switch response: {port!r}")
+                    if port in new_ports:
+                        raise ValueError(f"Duplicate port number in switch response: {port}")
+                    if not consuming_power_mw.isdigit() or not max_power_mw.isdigit():
+                        raise ValueError(f"Invalid power value for port {port}")
+
                     if state == "Enable":
                         state = STATE_ON
                     elif state == "Disable":
@@ -491,6 +526,40 @@ class ZyxelPoeData:
 
                 if not new_ports:
                     raise ValueError("No port data found in switch response")
+
+                model = str(self.device_info.get("model", "")).upper().replace(" ", "")
+                expected_poe_ports = {
+                    "GS1900-8HP": 8,
+                    "GS1900-10HP": 8,
+                    "GS1900-24EP": 12,
+                }.get(model)
+
+                if expected_poe_ports is not None:
+                    expected = {str(port) for port in range(1, expected_poe_ports + 1)}
+                    actual = set(new_ports)
+                    if actual != expected:
+                        missing = sorted(expected - actual, key=int)
+                        unexpected = sorted(actual - expected, key=int)
+                        raise ValueError(
+                            f"Incomplete PoE port table for {model}: "
+                            f"expected {expected_poe_ports} ports, got {len(actual)}; "
+                            f"missing={missing}, unexpected={unexpected}"
+                        )
+                elif self.ports:
+                    expected = set(self.ports)
+                    actual = set(new_ports)
+                    if actual != expected:
+                        raise ValueError(
+                            "Port table differs from the previously confirmed "
+                            f"snapshot: expected {sorted(expected, key=int)}, "
+                            f"got {sorted(actual, key=int)}"
+                        )
+                else:
+                    numbers = sorted(int(port) for port in new_ports)
+                    if numbers != list(range(1, len(numbers) + 1)):
+                        raise ValueError(
+                            f"Non-contiguous port sequence in switch response: {numbers}"
+                        )
 
         except (
             asyncio.TimeoutError,
@@ -526,8 +595,5 @@ class ZyxelPoeData:
         if not was_available:
             _LOGGER.info("Communication with Zyxel switch at %s restored", self._url)
 
-        if (
-            not self._device_info_loaded
-            or time.monotonic() - self._last_device_info_update >= 300
-        ):
+        if time.monotonic() - self._last_device_info_update >= 300:
             await self._async_update_device_info()
