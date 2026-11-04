@@ -1,6 +1,8 @@
 """Tests for switch data handling and entities."""
 
 from unittest.mock import AsyncMock
+import asyncio
+import logging
 
 import pytest
 from homeassistant.const import STATE_OFF, STATE_ON
@@ -414,3 +416,19 @@ async def test_malformed_port_rows_are_rejected(poe_data):
         await poe_data._async_update()
 
     assert poe_data.ports == {}
+
+
+@pytest.mark.asyncio
+async def test_empty_timeout_warning_includes_exception_type_and_traceback(
+    poe_data, caplog
+):
+    """An empty timeout string must still produce useful warning diagnostics."""
+    poe_data._initial_update_succeeded = True
+    poe_data.available = True
+    poe_data._login = AsyncMock(side_effect=asyncio.TimeoutError())
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.zyxel_poe.switch"):
+        await poe_data._async_update()
+
+    assert "lost (TimeoutError):" in caplog.text
+    assert "TimeoutError" in caplog.text

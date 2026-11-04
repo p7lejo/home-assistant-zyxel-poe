@@ -590,9 +590,11 @@ class ZyxelPoeData:
                 ) from ex
             if was_available:
                 _LOGGER.warning(
-                    "Communication with Zyxel switch at %s lost: %s",
+                    "Communication with Zyxel switch at %s lost (%s): %r",
                     self._url,
+                    type(ex).__name__,
                     ex,
+                    exc_info=True,
                 )
             else:
                 _LOGGER.debug(
