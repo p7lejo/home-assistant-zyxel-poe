@@ -92,7 +92,7 @@ async def test_successful_poll_restores_availability(poe_data, monkeypatch):
         "x", "x", "1", "Enable", "Class 3", "High", "On",
         "1200", "30000", "Always", "Active", "x",
     ]
-    row = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    row = '<tr><td><input name="port" value="1"></td>' + "".join(f"<td>{cell}</td>" for cell in cells[1:]) + "</tr>"
     html = f"<table></table><table></table><table>{row}</table>"
 
     poe_data._login = AsyncMock()
@@ -200,7 +200,7 @@ async def test_incomplete_device_info_is_still_throttled(poe_data):
         "x", "x", "1", "Enable", "Class 3", "High", "On",
         "1200", "30000", "Always", "Active", "x",
     ]
-    row = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    row = '<tr><td><input name="port" value="1"></td>' + "".join(f"<td>{cell}</td>" for cell in cells[1:]) + "</tr>"
     html = f"<table></table><table></table><table>{row}</table>"
     poe_data._login = AsyncMock()
     response = AsyncMock()
@@ -279,7 +279,43 @@ def _port_row(port, power="1200", max_power="30000"):
         "x", "x", str(port), "Enable", "Class 3", "High", "On",
         power, max_power, "Always", "Active", "x",
     ]
-    return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    return '<tr><td><input name="port" value="' + str(port) + '"></td>' + "".join(f"<td>{cell}</td>" for cell in cells[1:]) + "</tr>"
+
+
+@pytest.mark.asyncio
+async def test_gs1900_8hp_nested_time_range_header_does_not_break_port_parsing(poe_data):
+    """Nested header cells must not be counted as cells of a port row."""
+    poe_data.device_info["model"] = "GS1900-8HP"
+    headers = """
+    <tr><td colspan="12"><table><tr><td colspan="2">Time Range</td></tr>
+    <tr><td>Name</td><td>Status</td></tr></table></td></tr>
+    """
+    rows = "".join(
+        '<tr><td></td><td><input type="checkbox" name="port" value="{p}"></td>'
+        '<td>{p}</td><td>{state}</td><td>class0</td><td>Medium</td>'
+        '<td>802.3at</td><td>Disable</td><td>{power}</td><td>{maximum}</td>'
+        '<td></td><td>-</td><td></td></tr>'.format(
+            p=port,
+            state="Enable" if port in (1, 5, 8) else "Disable",
+            power=7200 if port == 1 else 0,
+            maximum=16200 if port in (1, 5) else 0,
+        )
+        for port in range(1, 9)
+    )
+    html = f"<table></table><table></table><table>{headers}{rows}</table>"
+    poe_data._login = AsyncMock()
+    response = AsyncMock()
+    response.ok = True
+    response.text.return_value = html
+    poe_data._session.get = AsyncMock(return_value=response)
+    poe_data._async_update_device_info = AsyncMock()
+
+    await poe_data._async_update()
+
+    assert poe_data.available is True
+    assert len(poe_data.ports) == 8
+    assert poe_data.ports["1"]["current_power_w"] == 7.2
+    assert poe_data.ports["5"]["current_power_w"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -369,7 +405,7 @@ async def test_malformed_port_rows_are_rejected(poe_data):
     response.text.return_value = (
         "<table></table><table></table><table>"
         + _port_row(1)
-        + "<tr><td>truncated row</td></tr>"
+        + '<tr><td><input name="port" value="2"></td><td>truncated row</td></tr>'
         + "</table>"
     )
     poe_data._session.get = AsyncMock(return_value=response)

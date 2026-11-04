@@ -462,7 +462,13 @@ class ZyxelPoeData:
                 new_ports = {}
 
                 for row in table.find_all("tr"):
-                    cols = row.find_all("td")
+                    # The Time Range header contains a nested table. Restrict
+                    # cells to this row and only parse actual port rows.
+                    port_input = row.find("input", attrs={"name": "port"})
+                    if port_input is None:
+                        continue
+
+                    cols = row.find_all("td", recursive=False)
 
                     if len(cols) == 13:
                         (
