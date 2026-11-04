@@ -496,8 +496,12 @@ class ZyxelPoeData:
                             _,
                         ) = map(lambda a: a.text.strip(), cols)
                         wide_range_detection = "Unavailable"
-                    else:
+                    elif not cols:
                         continue
+                    else:
+                        raise ValueError(
+                            f"Unexpected port row layout: expected 12 or 13 cells, got {len(cols)}"
+                        )
 
                     if not port.isdigit() or int(port) < 1:
                         raise ValueError(f"Invalid port number in switch response: {port!r}")
@@ -510,6 +514,10 @@ class ZyxelPoeData:
                         state = STATE_ON
                     elif state == "Disable":
                         state = STATE_OFF
+                    else:
+                        raise ValueError(
+                            f"Invalid PoE state for port {port}: {state!r}"
+                        )
 
                     new_ports[port] = {
                         "port": port,
