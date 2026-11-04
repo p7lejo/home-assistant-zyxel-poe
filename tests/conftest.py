@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 from unittest.mock import MagicMock
+import time
 
 import pytest
 
@@ -29,7 +30,7 @@ def fake_session():
 @pytest.fixture
 def poe_data(hass, fake_session):
     """Return an uninitialized switch data object."""
-    return ZyxelPoeData(
+    data = ZyxelPoeData(
         hass,
         "192.0.2.10",
         "admin",
@@ -37,3 +38,6 @@ def poe_data(hass, fake_session):
         SCAN_INTERVAL,
         fake_session,
     )
+    # Unit tests control device-info polling explicitly; production starts at 0.
+    data._last_device_info_update = time.monotonic()
+    return data
