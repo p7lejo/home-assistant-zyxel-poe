@@ -3,7 +3,8 @@ import logging
 import asyncio
 import re
 import time
-import aiohttpimport math
+import aiohttp
+import math
 from random import random
 
 from homeassistant.const import STATE_ON, STATE_OFF
