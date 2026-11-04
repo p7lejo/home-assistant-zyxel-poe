@@ -200,7 +200,7 @@ async def test_incomplete_device_info_is_still_throttled(poe_data):
         "x", "x", "1", "Enable", "Class 3", "High", "On",
         "1200", "30000", "Always", "Active", "x",
     ]
-    row = "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+    row = '<tr><td><input name="port" value="1"></td>' + "".join(f"<td>{cell}</td>" for cell in cells[1:]) + "</tr>"
     html = f"<table></table><table></table><table>{row}</table>"
     poe_data._login = AsyncMock()
     response = AsyncMock()
