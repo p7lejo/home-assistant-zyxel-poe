@@ -1,66 +1,86 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
-Manage the Power-over-Ethernet functionality of ZyXEL switches.
-Because this functionality is not available via SNMP (WTF, ZyXEL?) it will be performed over HTTP. Admin credentials are required.
+# ZyXEL PoE for Home Assistant
 
-# Compatibility
+Diese Custom Integration steuert die Power-over-Ethernet-Ports kompatibler ZyXEL-Switches über deren lokale HTTP-Weboberfläche. Zusätzlich stellt sie den Leistungsbedarf je Port und den letzten Systemstart des Switches bereit.
 
-## Home Assistant
+Die Integration benötigt administrative Zugangsdaten. Die Kommunikation erfolgt derzeit unverschlüsselt über HTTP im lokalen Netzwerk. Verwende sie daher nur in einem vertrauenswürdigen LAN und stelle die Weboberfläche des Switches nicht ungeschützt ins Internet.
 
-Requires Home Assistant 2023.1.0 or newer.
+## Kompatibilität
 
-## Tested Devices
+### Home Assistant
 
-Tested original with: 
+- Mindestversion: **Home Assistant 2023.1.0**
+- Integrationstyp: lokale Abfrage (Polling)
+- Konfiguration: über den Home-Assistant-Config-Flow
+
+### Gerätemodelle
+
+Die ursprüngliche Integration wurde mit folgenden Modellen getestet:
+
 - ZyXEL GS1900-8HP
 - ZyXEL GS1900-10HP
 - ZyXEL GS1900-24EP
 
-forked version tested with:
-- ZyXEL GS1900-8HP
-
-Should be compatible with similar models.
+Die Fork-Version wurde vom Maintainer mit einem **GS1900-8HP** getestet. Die Unterstützung weiterer GS1900-Modelle ist plausibel, aber nicht für jedes Modell und jede Firmware-Version durch eigene Tests belegt.
 
 ## Installation
 
-### Method 1: HACS (Recommended)
+### HACS
 
-This integration is available in HACS (Home Assistant Community Store). Search for "ZyXEL PoE" in HACS and install it directly.
+1. HACS öffnen.
+2. Unter **Integrationen** nach **ZyXEL PoE** suchen.
+3. Integration installieren.
+4. Home Assistant neu starten.
 
-## Configuration
+### Manuelle Installation
 
-### Home Assistant UI
+1. Das Verzeichnis `custom_components/zyxel_poe` dieses Repositories herunterladen.
+2. In das Verzeichnis `config/custom_components/zyxel_poe` kopieren.
+3. Home Assistant neu starten.
 
-This integration supports configuration through the Home Assistant UI:
+## Konfiguration
 
-1. Go to **Settings** → **Devices & Services**
-2. Click the **+ ADD INTEGRATION** button
-3. Search for "ZyXEL PoE" and select it
-4. Follow the configuration steps to add your ZyXEL switch
+1. **Einstellungen → Geräte & Dienste** öffnen.
+2. **Integration hinzufügen** auswählen.
+3. Nach **ZyXEL PoE** suchen.
+4. Hostname oder IP-Adresse, Benutzername und Passwort des Switch-Administrators eingeben.
+5. Konfiguration abschließen.
 
-After the switch has been added, each physical PoE port is automatically created as an entity associated with the switch device. The ports are represented as **virtual switches** and can be controlled manually from Home Assistant just like a smart plug: turning a port on or off enables or disables PoE power on the corresponding physical port.
+Die aktuelle Implementierung verwendet einen Config Entry. Eine Konfiguration über `configuration.yaml` bzw. einen YAML-Plattform-Eintrag wird nicht angeboten.
 
-The port entities can be renamed in Home Assistant to match the connected device, for example "Terrace Camera" or "Access Point". This makes it easy to identify and control individual PoE-connected devices directly from Home Assistant.
+## Bereitgestellte Entities
 
-In addition to controlling the PoE ports, the integration provides the **current power consumption of each port** as a Home Assistant sensor. The power consumption is read from the switch and displayed in watts, allowing it to be used in dashboards, automations, and statistics.
+Für jeden erkannten PoE-Port werden zwei Entities angelegt:
 
-These enhancements build on the functionality of the original fork, which already provided individual PoE port control. The current version extends this by integrating the ports more naturally into Home Assistant, including user-configurable entity names and dedicated power-consumption sensors.
+| Entity | Funktion |
+| --- | --- |
+| Switch „Port N“ | Aktiviert bzw. deaktiviert PoE am physischen Port |
+| Sensor „Port N consuming power“ | Aktuelle Leistungsaufnahme in Watt |
 
-### Method 2: Manual Installation
+Zusätzlich wird ein Sensor **Systemstart** als Zeitstempel-Entity bereitgestellt. Er zeigt den aus der Switch-Uptime abgeleiteten letzten Neustart an und gehört zur Diagnosekategorie.
 
-To install manually, copy the `zyxel_poe` folder into your [custom_components folder](https://developers.home-assistant.io/docs/en/creating_component_loading.html).
+Die bestehenden Unique IDs folgen den Mustern `<host>_port_<port>`, `<host>_port_<port>_power` und `<host>_system_start`. Entity-Namen können in Home Assistant an die angeschlossenen Geräte angepasst werden.
 
-## Configuration
+## Verfügbarkeit und Aktualisierung
 
-```yaml
-# Example configuration.yaml entry
-switch:
-- platform: zyxel_poe
-  devices:
-  - host: switch1.local
-    username: admin
-    password: !secret switch1
-  - host: switch2.local
-    username: admin
-    password: !secret switch2
+Der Portstatus wird regelmäßig aus der Weboberfläche des Switches gelesen. Bei einem Fehler während der ersten Abfrage schlägt die Einrichtung fehl. Nach erfolgreicher Einrichtung werden die Entities bei Kommunikationsproblemen als **nicht verfügbar** markiert. Sobald die Kommunikation wieder funktioniert, werden sie wieder verfügbar.
+
+Die Switch-Weboberfläche liefert die Leistungsaufnahme in Milliwatt; die Integration stellt sie in Watt dar. Die angezeigten Werte hängen von den Mess- und Aktualisierungseigenschaften des Switches ab.
+
+## Hinweise und Einschränkungen
+
+- Die Integration verwendet die HTTP-Weboberfläche des Switches, keine SNMP-PoE-Steuerung.
+- Benutzername und Passwort müssen für die Weboberfläche gültig sein und ausreichende Rechte besitzen.
+- HTML-Struktur und Login-Verhalten können je nach Modell und Firmware variieren.
+- Die Integration wurde nicht mit jeder Firmware-Version und nicht mit jedem genannten Modell der ursprünglichen Integration erneut getestet.
+- Bei Problemen bitte Modell, Hardware-Revision, Firmware-Version und relevante Home-Assistant-Logs angeben. Keine Passwörter oder Session-Cookies in Issues veröffentlichen.
+
+## Entwicklung und Tests
+
+Review-Rollen und Prüfkriterien stehen in [docs/REVIEW_PERSONAS.md](docs/REVIEW_PERSONAS.md). Die Testsuite wird mit pytest ausgeführt:
+
+```bash
+python -m pip install -r requirements_test.txt
+pytest
 ```
